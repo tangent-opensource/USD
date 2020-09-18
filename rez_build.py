@@ -10,10 +10,17 @@ if __name__ == "__main__":
     src = os.environ["TMP_USD_BUILD_PATH"]
     dst = str(os.environ["REZ_BUILD_INSTALL_PATH"]) + "/build"
 
-    print("Copying: {0} : {1}".format(src, dst))
+    dirs = [
+        "bin",
+        "lib",
+        "plugin",
+        "include/pxr",
+    ]
 
     try:
-        shutil.copytree(src, dst)
+        for d in dirs:
+            print("Copying: {0} : {1}".format(src + "/" + d, dst + "/" + d))
+            shutil.copytree(src + "/" + d, dst + "/" + d)
     except:
         print(" - Files already exist.")
         pass

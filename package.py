@@ -2,17 +2,11 @@
 
 name = 'usd'
 
-version = '20.05+ta.1.0.0'
+version = '20.05+ta.1.0.1'
 
 authors = [
     'pixar',
     'benjamin.skinner',
-]
-
-requires = [
-    'python-3',
-    'PySide2-5.14.1',
-    'PyOpenGL-3.1.5',
 ]
 
 # TODO: Fill these out with proper build requirements
@@ -21,8 +15,23 @@ build_requires = [
 ]
 
 variants = [
-    ['platform-windows', 'arch-x64', 'os-windows-10', 'visual_studio'],
+    ['platform-windows', 'arch-x64', 'os-windows-10'],
 ]
+
+@early()
+def requires():
+    common = [
+        'python-3',
+        'PySide2-5.14.1',
+        'PyOpenGL-3.1.5',
+    ]
+
+    if building:
+        import sys
+        if 'win' in str(sys.platform):
+            return common + ['visual_studio']
+    else:
+        return common
 
 build_command = 'python {root}/rez_build.py'
 
