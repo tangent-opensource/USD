@@ -19,6 +19,10 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
                       ${CMAKE_SOURCE_DIR}/cmake/macros)
 
 include(Options)
+
+# ====== Tangent Rez Deps
+include(${CMAKE_CURRENT_SOURCE_DIR}/rez_deps.cmake)
+
 include(ProjectDefaults)
 include(Packages)
 

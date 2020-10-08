@@ -2,50 +2,55 @@
 
 name = 'usd'
 
-version = '20.05+ta.1.0.1'
+version = '20.05-ta.1.1.0'
 
 authors = [
-    'pixar',
     'benjamin.skinner',
-]
-
-# TODO: Fill these out with proper build requirements
-build_requires = [
-
+    'pixar',
 ]
 
 variants = [
     ['platform-windows', 'arch-x64', 'os-windows-10'],
 ]
 
+requires = [
+    'python-3.7',
+    'PySide2-5.12.2',
+    'PyOpenGL-3.1.5',
+    'oiio-1.8.9',
+    'ocio-1.1.1',
+    #'openvdb-7.0.0',
+    'opensubdiv-3.4.3',
+    'openexr-2.4.0',
+    'boost-1.69.0',
+    'tbb-2019',
+    'glew-2.0.0',
+]
+
 @early()
-def requires():
-    common = [
-        'python-3',
-        'PySide2-5.14.1',
-        'PyOpenGL-3.1.5',
-    ]
-
-    if building:
-        import sys
-        if 'win' in str(sys.platform):
-            return common + ['visual_studio']
+def private_build_requires():
+    import sys
+    if 'win' in str(sys.platform):
+        return ['visual_studio']
     else:
-        return common
+        return ['gcc-7']
 
-build_command = 'python {root}/rez_build.py'
-
-def pre_build_commands():
-    env.TMP_USD_BUILD_PATH.set('C:/dev/builds/usd_20_05')
+build_system = "cmake"
 
 def commands():
-    env.USD_ROOT.append( '{root}/build' )
 
-    env.USD_INCLUDE_DIR.set( '{0}/include'.format(env.USD_ROOT) )
-    env.USD_LIBRARY_DIR.set( '{0}/lib'.format(env.USD_ROOT) )
-    env.USD_PYTHON_DIR.set( '{0}/lib/python'.format( env.USD_ROOT ) )
+    # Split and store version and package version
+    split_versions = str(version).split('-')
+    env.USD_VERSION.set(split_versions[0])
+    env.USD_PACKAGE_VERSION.set(split_versions[1])
+
+    env.USD_ROOT.append( '{root}' )
+
+    env.USD_INCLUDE_DIR.set( '{root}/include' )
+    env.USD_LIBRARY_DIR.set( '{root}/lib' )
+    env.USD_PYTHON_DIR.set( '{root}/lib/python' )
     
-    env.PATH.append( '{0}/bin'.format( env.USD_ROOT ) )
-    env.PATH.append( '{0}/lib'.format( env.USD_ROOT ) )
+    env.PATH.append( '{root}/bin' )
+    env.PATH.append( '{root}/lib' )
 
     env.PYTHONPATH.append( '{0}'.format( env.USD_PYTHON_DIR ) )
