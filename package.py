@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '20.05-ta.1.2.0'
+version = '20.05-ta.1.3.0'
 
 authors = [
     'benjamin.skinner',
@@ -10,19 +10,17 @@ authors = [
 ]
 
 variants = [
-    ['platform-windows', 'arch-x64', 'os-windows-10'],
+    ['platform-windows', 'arch-x64', 'os-windows-10', "python-3.7", "PySide2-5.14.1", "boost-1.69"],
+    ['platform-windows', 'arch-x64', 'os-windows-10', "python-2.7", "PySide-1.2.4", "boost-1.65"],
 ]
 
 requires = [
-    'python-3.7',
-    'PySide2-5.12.2',
     'PyOpenGL-3.1.5',
     'oiio-1.8.9',
     'ocio-1.1.1',
     'openvdb-7.0.0',
     'opensubdiv-3.4.3',
     'openexr-2.4.0',
-    'boost-1.69.0',
     'tbb-2019',
     'glew-2.0.0',
 ]
