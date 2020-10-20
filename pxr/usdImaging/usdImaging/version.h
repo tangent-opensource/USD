@@ -45,8 +45,10 @@ PXR_NAMESPACE_OPEN_SCOPE
 // Version 12 - Adapter PopulateSelection signature change to adapt to
 //              flat instance indices in hydra selection.
 // Version 13 - Deleted GetPathForInstanceIndex; added GetScenePrimPath.
+// Version 14 - Added HdInstancerContext to GetScenePrimPath.
+// Version 15 - CanPopulateMaster renamed to CanPopulateUsdInstance.
 
-#define USD_IMAGING_API_VERSION 13
+#define USD_IMAGING_API_VERSION 15
 
 
 PXR_NAMESPACE_CLOSE_SCOPE

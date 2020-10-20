@@ -91,7 +91,7 @@ _DiffTimeToNow(std::chrono::steady_clock::time_point const& then)
 
 void
 HdxPrman_RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
-                            TfTokenVector const &renderTags)
+                              TfTokenVector const &/*renderTags*/)
 {
     HD_TRACE_FUNCTION();
     
@@ -118,6 +118,14 @@ HdxPrman_RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
     if (currentSceneVersion != _lastRenderedVersion) {
         needStartRender = true;
         _lastRenderedVersion = currentSceneVersion;
+    }
+
+    // Creates displays if needed
+    HdRenderPassAovBindingVector aovBindings =
+        renderPassState->GetAovBindings();
+    if(_interactiveContext->CreateDisplays(aovBindings))
+    {
+        needStartRender = true;
     }
 
     // Enable/disable the fallback light when the scene provides no lights.
@@ -272,7 +280,7 @@ HdxPrman_RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
     // Likewise the render settings.
     HdRenderDelegate *renderDelegate = GetRenderIndex()->GetRenderDelegate();
     int currentSettingsVersion = renderDelegate->GetRenderSettingsVersion();
-    if (_lastSettingsVersion != currentSettingsVersion) {
+    if (_lastSettingsVersion != currentSettingsVersion || camParamsChanged) {
         _interactiveContext->StopRender();
 
         _integrator = renderDelegate->GetRenderSetting<std::string>(
@@ -301,6 +309,10 @@ HdxPrman_RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
                 (HdPrmanRenderDelegate*)renderDelegate,
                 _integrator,
                  integratorParams);             
+            _interactiveContext->SetIntegratorParamsFromCamera(
+                (HdPrmanRenderDelegate*)renderDelegate, hdCam,
+                _integrator, integratorParams);
+
             riley::ShadingNode integratorNode {
                 riley::ShadingNode::k_Integrator,
                 RtUString(_integrator.c_str()),
@@ -354,30 +366,6 @@ HdxPrman_RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
 	_mainIntegratorId = _interactiveContext->integratorId;
     }
 
-    // Request a framebuffer clear if the clear value in the aov has changed
-    // from the framebuffer clear value.
-    // We do this before StartRender() to avoid race conditions where some
-    // buckets may get discarded or cleared with the wrong value.
-    for (HdRenderPassAovBinding const& aov : renderPassState->GetAovBindings()){
-        if (aov.aovName == HdAovTokens->color) {
-            GfVec4f const& clear = aov.clearValue.Get<GfVec4f>(); 
-            if (clear != _interactiveContext->framebuffer.clearColor) {
-                _interactiveContext->StopRender();
-                _interactiveContext->framebuffer.pendingClear = true; 
-                _interactiveContext->framebuffer.clearColor = clear;
-                needStartRender = true;
-            }
-        } else if (aov.aovName == HdAovTokens->depth) {
-            float clear = aov.clearValue.Get<float>(); 
-            if (clear != _interactiveContext->framebuffer.clearDepth) {
-                _interactiveContext->StopRender();
-                _interactiveContext->framebuffer.pendingClear = true; 
-                _interactiveContext->framebuffer.clearDepth = clear;
-                needStartRender = true;
-            }
-        }
-    }
-
     // NOTE:
     //
     // _quickIntegrate enables hdxPrman to go into a mode
@@ -421,15 +409,12 @@ HdxPrman_RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
 
     _converged = !_interactiveContext->renderThread.IsRendering();
 
-    HdRenderPassAovBindingVector aovBindings =
-        renderPassState->GetAovBindings();
-
-
     // Blit from the framebuffer to the currently selected AOVs.
     // Lock the framebuffer when reading so we don't overlap
     // with RenderMan's resize/writing.
     _interactiveContext->framebuffer.mutex.lock();
-    for (size_t aov = 0; aov < aovBindings.size(); ++aov) {
+
+    for(size_t aov = 0; aov < aovBindings.size(); ++aov) {
         if(!TF_VERIFY(aovBindings[aov].renderBuffer)) {
             continue;
         }
@@ -438,38 +423,12 @@ HdxPrman_RenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
 
         // Forward convergence state to the render buffers...
         rb->SetConverged(_converged);
-
-        if (aovBindings[aov].aovName == HdAovTokens->color) {
-            rb->Blit(HdFormatFloat32Vec4,
-                _interactiveContext->framebuffer.w,
-                _interactiveContext->framebuffer.h,
-                reinterpret_cast<uint8_t*>(
-                   _interactiveContext->framebuffer.color.data()));
-        } else if (aovBindings[aov].aovName == HdAovTokens->depth) {
-            rb->Blit(HdFormatFloat32,
-                _interactiveContext->framebuffer.w,
-                _interactiveContext->framebuffer.h,
-                reinterpret_cast<uint8_t*>(
-                    _interactiveContext->framebuffer.depth.data()));
-        } else if (aovBindings[aov].aovName == HdAovTokens->primId) {
-            rb->Blit(HdFormatInt32,
-                _interactiveContext->framebuffer.w,
-                _interactiveContext->framebuffer.h,
-                reinterpret_cast<uint8_t*>(
-                    _interactiveContext->framebuffer.primId.data()));
-        } else if (aovBindings[aov].aovName == HdAovTokens->instanceId) {
-            rb->Blit(HdFormatInt32,
-                _interactiveContext->framebuffer.w,
-                _interactiveContext->framebuffer.h,
-                reinterpret_cast<uint8_t*>(
-                    _interactiveContext->framebuffer.instanceId.data()));
-        } else if (aovBindings[aov].aovName == HdAovTokens->elementId) {
-            rb->Blit(HdFormatInt32,
-                _interactiveContext->framebuffer.w,
-                _interactiveContext->framebuffer.h,
-                reinterpret_cast<uint8_t*>(
-                    _interactiveContext->framebuffer.elementId.data()));
-        }
+        rb->Blit(_interactiveContext->framebuffer.aovs[aov].format,
+                 _interactiveContext->framebuffer.w,
+                 _interactiveContext->framebuffer.h,
+                 reinterpret_cast<uint8_t*>(
+                     _interactiveContext->
+                     framebuffer.aovs[aov].pixels.data()));
     }
     _interactiveContext->framebuffer.mutex.unlock();
 }

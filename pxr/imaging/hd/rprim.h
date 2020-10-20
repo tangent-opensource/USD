@@ -153,9 +153,8 @@ public:
     /// These draw items should be constructed and cached beforehand by Sync().
     /// If no draw items exist, or reprToken cannot be found, nullptr will be
     /// returned.
-    using HdDrawItemPtrVector = std::vector<HdDrawItem*>;
     HD_API
-    const HdDrawItemPtrVector*
+    const HdRepr::DrawItemUniquePtrVector &
     GetDrawItems(TfToken const& reprToken) const;
 
     // ---------------------------------------------------------------------- //
@@ -281,16 +280,6 @@ protected:
     HD_API
     void _SetMaterialId(HdChangeTracker &changeTracker,
                         SdfPath const& materialId);
-
-    // methods to assist allocating and migrating shared primvar ranges
-    HD_API
-    static bool _IsEnabledSharedVertexPrimvar();
-
-    HD_API
-    uint64_t
-    _ComputeSharedPrimvarId(uint64_t baseId,
-                      HdBufferSourceSharedPtrVector const &sources,
-                      HdComputationSharedPtrVector const &computations) const;
 
 private:
     SdfPath _instancerId;

@@ -27,6 +27,7 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/textureResource.h"
 #include "pxr/imaging/hd/enums.h"
+#include "pxr/imaging/hd/types.h"
 #include "pxr/imaging/hdSt/api.h"
 
 #include "pxr/imaging/glf/texture.h"
@@ -47,7 +48,15 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 using HdStTextureResourceSharedPtr = std::shared_ptr<class HdStTextureResource>;
 
-/// HdStTextureResource is an interface to a GL-backed texture.
+///
+/// \class HdStTextureResource
+///
+/// An interface to a GL-backed texture.
+///
+/// \deprecated It is now the responsibility of the render delegate to load
+/// the texture (using the file path authored on the texture node in a
+/// material network).
+///
 class HdStTextureResource : public HdTextureResource, boost::noncopyable {
 public:
     HDST_API

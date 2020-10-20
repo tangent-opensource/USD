@@ -80,11 +80,11 @@ public:
     void AddShadowTask(SdfPath const &id);
     void AddSelectionTask(SdfPath const &id);
     void AddDrawTargetTask(SdfPath const &id);
-    void AddDrawTargetResolveTask(SdfPath const &id);
     void AddPickTask(SdfPath const &id);
 
     void SetTaskParam(SdfPath const &id, TfToken const &name, VtValue val);
     VtValue GetTaskParam(SdfPath const &id, TfToken const &name);
+    HdRenderBufferDescriptor GetRenderBufferDescriptor(SdfPath const &id);
 
     /// Instancer
     void AddInstancer(SdfPath const &id,
@@ -111,7 +111,7 @@ public:
                  VtIntArray const &verts,
                  bool guide=false,
                  SdfPath const &instancerId=SdfPath(),
-                 TfToken const &scheme=PxOsdOpenSubdivTokens->catmark,
+                 TfToken const &scheme=PxOsdOpenSubdivTokens->catmullClark,
                  TfToken const &orientation=HdTokens->rightHanded,
                  bool doubleSided=false);
     
@@ -127,14 +127,14 @@ public:
                  HdInterpolation opacityInterpolation,
                  bool guide=false,
                  SdfPath const &instancerId=SdfPath(),
-                 TfToken const &scheme=PxOsdOpenSubdivTokens->catmark,
+                 TfToken const &scheme=PxOsdOpenSubdivTokens->catmullClark,
                  TfToken const &orientation=HdTokens->rightHanded,
                  bool doubleSided=false);
 
     void AddCube(SdfPath const &id, GfMatrix4d const &transform, 
                  bool guide=false,
                  SdfPath const &instancerId=SdfPath(),
-                 TfToken const &scheme=PxOsdOpenSubdivTokens->catmark,
+                 TfToken const &scheme=PxOsdOpenSubdivTokens->catmullClark,
                  VtValue const &color = VtValue(GfVec3f(1,1,1)),
                  HdInterpolation colorInterpolation = HdInterpolationConstant,
                  VtValue const &opacity = VtValue(1.0f),
@@ -145,7 +145,7 @@ public:
 
     void AddTet(SdfPath const &id, GfMatrix4d const &transform,
                  bool guide=false, SdfPath const &instancerId=SdfPath(),
-                 TfToken const &scheme=PxOsdOpenSubdivTokens->catmark);
+                 TfToken const &scheme=PxOsdOpenSubdivTokens->catmullClark);
 
     void SetRefineLevel(SdfPath const &id, int level);
 

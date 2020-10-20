@@ -232,7 +232,7 @@ GlfBaseTexture::_UpdateTexture(GlfBaseTextureDataConstPtr texData)
         _currentWidth  = texData->ResizedWidth();
         _currentHeight = texData->ResizedHeight();
         _currentDepth  = texData->ResizedDepth();
-        _format        = texData->GLFormat();
+        _format        = GlfGetGLFormat(texData->GetHioFormat());
         _hasWrapModeS  = texData->GetWrapInfo().hasWrapModeS;
         _hasWrapModeT  = texData->GetWrapInfo().hasWrapModeT;
         _hasWrapModeR  = texData->GetWrapInfo().hasWrapModeR;
@@ -348,6 +348,8 @@ GlfBaseTexture::_CreateTexture(GlfBaseTextureDataConstPtr texData,
 
         glBindTexture(textureTarget, _textureName);
 
+        bool generateMipMaps = false;
+
         // Check if mip maps have been requested, if so, it will either
         // enable automatic generation or use the ones loaded in cpu memory
         int numMipLevels = 1;
@@ -365,10 +367,10 @@ GlfBaseTexture::_CreateTexture(GlfBaseTextureDataConstPtr texData,
             if (numMipLevels > 1) {
                 glTexParameteri(textureTarget, GL_TEXTURE_MAX_LEVEL, numMipLevels-1);
             } else {
-                glTexParameteri(textureTarget, GL_GENERATE_MIPMAP, GL_TRUE);
+                generateMipMaps = true;
             }
         } else {
-            glTexParameteri(textureTarget, GL_GENERATE_MIPMAP, GL_FALSE);
+            glTexParameteri(textureTarget, GL_TEXTURE_MAX_LEVEL, 0);
         }
 
         if (texData->IsCompressed()) {
@@ -378,7 +380,7 @@ GlfBaseTexture::_CreateTexture(GlfBaseTextureDataConstPtr texData,
                 _GlCompressedTexImageND(
                     numDimensions,
                     textureTarget, i,
-                    texData->GLInternalFormat(),
+                    GlfGetGLInternalFormat(texData->GetHioFormat()),
                     texData->ResizedWidth(i),
                     texData->ResizedHeight(i),
                     texData->ResizedDepth(i),
@@ -389,7 +391,7 @@ GlfBaseTexture::_CreateTexture(GlfBaseTextureDataConstPtr texData,
         } else {
             // Uncompressed textures can have cropping and other special 
             // behaviours.
-            if (GlfGetNumElements(texData->GLFormat()) == 1) {
+            if (GlfGetNumElements(texData->GetHioFormat()) == 1) {
                 GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_ONE};
                 glTexParameteriv(
                     textureTarget,
@@ -464,13 +466,13 @@ GlfBaseTexture::_CreateTexture(GlfBaseTextureDataConstPtr texData,
                 // Send the mip to the driver now
                 _GlTexImageND(numDimensions,
                               textureTarget, 0,
-                              texData->GLInternalFormat(),
+                              GlfGetGLInternalFormat(texData->GetHioFormat()),
                               croppedWidth,
                               croppedHeight,
                               croppedDepth,
                               0,
-                              texData->GLFormat(),
-                              texData->GLType(),
+                              GlfGetGLFormat(texData->GetHioFormat()),
+                              GlfGetGLType(texData->GetHioFormat()),
                               texData->GetRawBuffer(0));
                 
                 // Reset the OpenGL state if we have modify it previously
@@ -480,16 +482,20 @@ GlfBaseTexture::_CreateTexture(GlfBaseTextureDataConstPtr texData,
                 for (int i = 0 ; i < numMipLevels; i++) {
                     _GlTexImageND(numDimensions,
                                   textureTarget, i,
-                                  texData->GLInternalFormat(),
+                                  GlfGetGLInternalFormat(texData->GetHioFormat()),
                                   texData->ResizedWidth(i),
                                   texData->ResizedHeight(i),
                                   texData->ResizedDepth(i),
                                   0,
-                                  texData->GLFormat(),
-                                  texData->GLType(),
+                                  GlfGetGLFormat(texData->GetHioFormat()),
+                                  GlfGetGLType(texData->GetHioFormat()),
                                   texData->GetRawBuffer(i));
                 }
             }
+        }
+
+        if (generateMipMaps) {
+            glGenerateMipmap(textureTarget);
         }
 
         glBindTexture(textureTarget, 0);

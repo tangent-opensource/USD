@@ -1,9 +1,11 @@
 set(PXR_PREFIX pxr/imaging)
 set(PXR_PACKAGE hdSt)
 
-if (NOT ${PXR_ENABLE_GL_SUPPORT})
+# XXX We tmp check for PXR_ENABLE_GL_SUPPORT since Storm currently still only
+# runs on OpenGL. Once Storm uses only Hgi, remove GL_SUPPORT check.
+if (NOT ${PXR_BUILD_GPU_SUPPORT} OR NOT ${PXR_ENABLE_GL_SUPPORT})
     message(STATUS
-        "Skipping ${PXR_PACKAGE} because PXR_ENABLE_GL_SUPPORT is OFF")
+        "Skipping ${PXR_PACKAGE} because PXR_BUILD_GPU_SUPPORT is OFF")
     return()
 endif()
 
@@ -33,10 +35,9 @@ pxr_library(hdSt
 
     PUBLIC_CLASSES
         basisCurves
-        bufferArrayRangeGL
-        bufferResourceGL
+        bufferArrayRange
+        bufferResource
         commandBuffer
-        computeShader
         copyComputation
         debugCodes
         dispatchBuffer
@@ -44,9 +45,8 @@ pxr_library(hdSt
         drawItem
         drawItemInstance
         drawTarget
-        drawTargetAttachmentDesc
-        drawTargetAttachmentDescArray
         drawTargetRenderPassState
+        dynamicUvTextureObject
         extComputation
         extCompGpuComputation
         extCompGpuComputationBufferSource
@@ -54,10 +54,11 @@ pxr_library(hdSt
         extCompGpuPrimvarBufferSource
         fallbackLightingShader
         field
-        fieldResource
+        fieldSubtextureIdentifier
         flatNormals
         geometricShader
         glConversions
+        glfTextureCpuData
         glslfxShader
         glslProgram
         glUtils
@@ -72,21 +73,29 @@ pxr_library(hdSt
         mesh
         mixinShader
         package
-        persistentBuffer
         points
         renderBuffer
         renderDelegate
         renderPass
         renderPassShader
         renderPassState
-        resourceGL
         resourceRegistry
         rprimUtils
+        samplerObject
+        samplerObjectRegistry
         shaderCode
         simpleLightingShader
         smoothNormals
+        subtextureIdentifier
         surfaceShader
         texture
+        textureBinder
+        textureCpuData
+        textureHandle
+        textureHandleRegistry
+        textureIdentifier
+        textureObject
+        textureObjectRegistry
         textureResource
         textureResourceHandle
         tokens
@@ -97,15 +106,16 @@ pxr_library(hdSt
 
     PUBLIC_HEADERS
         api.h
+        dynamicUvTextureImplementation.h
 
     PRIVATE_CLASSES
         basisCurvesComputations
         basisCurvesShaderKey
         basisCurvesTopology
         codeGen
+        computeShader
         cullingShaderKey
         drawBatch
-        drawTargetTextureResource
         imageShaderShaderKey
         immediateDrawBatch
         indirectDrawBatch

@@ -40,10 +40,11 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-
-typedef boost::shared_ptr<class HdStRenderPassShader> HdStRenderPassShaderSharedPtr;
-typedef boost::shared_ptr<class HdxRenderSetupTask> HdxRenderSetupTaskSharedPtr;
-typedef boost::shared_ptr<class HdStShaderCode> HdStShaderCodeSharedPtr;
+using HdxRenderSetupTaskSharedPtr =
+    std::shared_ptr<class HdxRenderSetupTask>;
+using HdStRenderPassShaderSharedPtr =
+    std::shared_ptr<class HdStRenderPassShader>;
+using HdStShaderCodeSharedPtr = std::shared_ptr<class HdStShaderCode>;
 
 using HdRenderPassStateSharedPtr = std::shared_ptr<class HdRenderPassState>;
 
@@ -140,6 +141,7 @@ struct HdxRenderTaskParams
         , enableIdRender(false)
         , alphaThreshold(0.0)
         , enableSceneMaterials(true)
+        , enableSceneLights(true)
         , depthBiasUseDefault(true)
         , depthBiasEnable(false)
         , depthBiasConstantFactor(0.0f)
@@ -180,6 +182,7 @@ struct HdxRenderTaskParams
     bool enableIdRender;
     float alphaThreshold;
     bool enableSceneMaterials;
+    bool enableSceneLights;
 
     // Depth Bias Raster State
     // When use default is true - state

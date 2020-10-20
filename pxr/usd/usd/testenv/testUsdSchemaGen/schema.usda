@@ -37,7 +37,6 @@ class "SingleApplyAPI" (
     inherits = </APISchemaBase>
     customData = {
         token apiSchemaType = "singleApply"
-        bool isPrivateApply = false
     }
 )
 {
@@ -57,7 +56,6 @@ class "MultipleApplyAPI" (
     inherits = </APISchemaBase>
     customData = {
         token apiSchemaType = "multipleApply"
-        bool isPrivateApply = true
         token propertyNamespacePrefix  = "test"
     }
 )
@@ -250,6 +248,9 @@ class "Base" (
 class Derived "Derived" (
     inherits = </Base>
     doc = """\\em Emphasized! \\section Test_Section Test Section"""
+    customData = {
+        token[] fallbackTypes = ["OldDerived", "OlderDerived"]
+    }
 ) {
 
     float3 pivotPosition = (0, 0, 0) (

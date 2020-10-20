@@ -70,8 +70,10 @@ UsdSchemaType UsdShadeMaterialBindingAPI::_GetSchemaType() const {
 UsdShadeMaterialBindingAPI
 UsdShadeMaterialBindingAPI::Apply(const UsdPrim &prim)
 {
-    return UsdAPISchemaBase::_ApplyAPISchema<UsdShadeMaterialBindingAPI>(
-            prim, _schemaTokens->MaterialBindingAPI);
+    if (prim.ApplyAPI<UsdShadeMaterialBindingAPI>()) {
+        return UsdShadeMaterialBindingAPI(prim);
+    }
+    return UsdShadeMaterialBindingAPI();
 }
 
 /* static */
@@ -453,7 +455,7 @@ UsdShadeMaterialBindingAPI::UnbindDirectBinding(
 {
     UsdRelationship bindingRel = GetPrim().CreateRelationship(
         _GetDirectBindingRelName(materialPurpose), /*custom*/ false);
-    return bindingRel && bindingRel.BlockTargets();
+    return bindingRel && bindingRel.SetTargets({});
 }
 
 bool 
@@ -464,7 +466,7 @@ UsdShadeMaterialBindingAPI::UnbindCollectionBinding(
     UsdRelationship collBindingRel = GetPrim().CreateRelationship(
         _GetCollectionBindingRelName(bindingName, materialPurpose), 
         /*custom*/ false);
-    return collBindingRel && collBindingRel.BlockTargets();
+    return collBindingRel && collBindingRel.SetTargets({});
 }
 
 bool
@@ -486,7 +488,7 @@ UsdShadeMaterialBindingAPI::UnbindAllBindings() const
     std::vector<UsdRelationship> result;
     for (const UsdProperty &prop : allBindingProperties) {
         if (UsdRelationship bindingRel = prop.As<UsdRelationship>()) {
-            success = bindingRel.BlockTargets() && success;
+            success = bindingRel.SetTargets({}) && success;
         }
     }
 
@@ -861,6 +863,13 @@ UsdShadeMaterialBindingAPI::GetMaterialBindSubsetsFamilyType()
 {
     UsdGeomImageable geom(GetPrim());
     return UsdGeomSubset::GetFamilyType(geom, UsdShadeTokens->materialBind);
+}
+
+/* static */
+bool
+UsdShadeMaterialBindingAPI::CanContainPropertyName(const TfToken &name)
+{
+    return TfStringStartsWith(name, UsdShadeTokens->materialBinding);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -53,9 +53,11 @@ _TestIntersection(
     UsdImagingGLRenderParams params)
 {
     GfVec3d hitPoint;
+    GfVec3d hitNormal;
     SdfPath hitPrimPath;
     SdfPath hitInstancerPath;
     int hitInstanceIndex;
+    HdInstancerContext hitInstancerContext;
 
     self.TestIntersection(
         viewMatrix,
@@ -63,11 +65,21 @@ _TestIntersection(
         root,
         params,
         &hitPoint,
+        &hitNormal,
         &hitPrimPath,
         &hitInstancerPath,
-        &hitInstanceIndex);
+        &hitInstanceIndex,
+        &hitInstancerContext);
 
-    return boost::python::make_tuple(hitPoint, hitPrimPath, hitInstancerPath, hitInstanceIndex);
+    SdfPath topLevelPath = SdfPath::EmptyPath();
+    int topLevelInstanceIndex = -1;
+    if (hitInstancerContext.size() > 0) {
+        topLevelPath = hitInstancerContext[0].first;
+        topLevelInstanceIndex = hitInstancerContext[0].second;
+    }
+
+    return boost::python::make_tuple(hitPoint, hitNormal, hitPrimPath,
+            hitInstanceIndex, topLevelPath, topLevelInstanceIndex);
 }
 
 static void

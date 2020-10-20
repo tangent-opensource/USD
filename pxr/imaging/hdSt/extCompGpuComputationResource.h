@@ -35,10 +35,11 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-typedef boost::shared_ptr<class HdStExtCompGpuComputationResource> 
-    HdStExtCompGpuComputationResourceSharedPtr;
-typedef boost::shared_ptr<class HdStGLSLProgram> HdStGLSLProgramSharedPtr;
-typedef std::vector<HdBufferArrayRangeSharedPtr> HdBufferArrayRangeSharedPtrVector;
+using HdStExtCompGpuComputationResourceSharedPtr =
+    std::shared_ptr<class HdStExtCompGpuComputationResource>;
+using HdStGLSLProgramSharedPtr= std::shared_ptr<class HdStGLSLProgram>;
+using HdBufferArrayRangeSharedPtrVector =
+    std::vector<HdBufferArrayRangeSharedPtr>;
 
 /// \class HdStExtCompGpuComputationResource
 ///
@@ -78,7 +79,7 @@ public:
     /// will cache and de-duplicate its compute shader instance with.
     HdStExtCompGpuComputationResource(
         HdBufferSpecVector const &outputBufferSpecs,
-        HdStComputeShaderSharedPtr const &kernel,
+        HdSt_ComputeShaderSharedPtr const &kernel,
         HdBufferArrayRangeSharedPtrVector const &inputs,
         HdStResourceRegistrySharedPtr const &registry
     );
@@ -114,7 +115,7 @@ public:
 
 private:
     HdBufferSpecVector                    _outputBufferSpecs;
-    HdStComputeShaderSharedPtr            _kernel;
+    HdSt_ComputeShaderSharedPtr            _kernel;
     HdStResourceRegistrySharedPtr         _registry;
     
     size_t                                _shaderSourceHash;

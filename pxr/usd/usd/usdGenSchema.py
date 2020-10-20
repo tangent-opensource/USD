@@ -88,14 +88,15 @@ SINGLE_APPLY = "singleApply"
 MULTIPLE_APPLY = "multipleApply"
 API_SCHEMA_TYPE_TOKENS = [NON_APPLIED, SINGLE_APPLY, MULTIPLE_APPLY]
 
-# Custom-data key authored on an applied API schema class prim in the schema 
-# definition to indicate whether the auto-generated Apply method should be 
-# public or private. 
-IS_PRIVATE_APPLY = "isPrivateApply"
-
 # Custom-data key authored on a multiple-apply API schema class prim in the 
 # schema definition, to define prefix for properties created by the API schema. 
 PROPERTY_NAMESPACE_PREFIX = "propertyNamespacePrefix"
+
+# Custom-data key authored on a concrete typed schema class prim in the schema
+# definition, to define fallbacks for the type that can be saved in root layer
+# metadata to provide fallback types to versions of Usd without the schema 
+# class type.
+FALLBACK_TYPES = "fallbackTypes"
 
 #------------------------------------------------------------------------------#
 # Parsed Objects                                                               #
@@ -433,6 +434,8 @@ class ClassInfo(object):
         self.isTyped = _IsTyped(usdPrim)
         self.isAPISchemaBase = self.cppClassName == 'UsdAPISchemaBase'
 
+        self.fallbackPrimTypes = self.customData.get(FALLBACK_TYPES)
+
         self.isApi = not self.isTyped and not self.isConcrete and \
                 not self.isAPISchemaBase
         self.apiSchemaType = self.customData.get(API_SCHEMA_TYPE, 
@@ -442,8 +445,9 @@ class ClassInfo(object):
 
         if not self.apiSchemaType == MULTIPLE_APPLY and \
             self.propertyNamespacePrefix:
-            raise Exception(errorMsg("propertyNamespacePrefix should only "
-                "be used as a metadata field on multiple-apply API schemas"))
+            raise _GetSchemaDefException("propertyNamespacePrefix should only "
+                "be used as a metadata field on multiple-apply API schemas",
+                sdfPrim.path)
 
         if self.isApi and \
            self.apiSchemaType not in API_SCHEMA_TYPE_TOKENS:
@@ -455,7 +459,6 @@ class ClassInfo(object):
         self.isAppliedAPISchema = \
             self.apiSchemaType in [SINGLE_APPLY, MULTIPLE_APPLY]
         self.isMultipleApply = self.apiSchemaType == MULTIPLE_APPLY
-        self.isPrivateApply = self.customData.get(IS_PRIVATE_APPLY, False)
 
         if self.isApi and not self.isAppliedAPISchema:
             self.schemaType = "UsdSchemaType::NonAppliedAPI";
@@ -482,11 +485,6 @@ class ClassInfo(object):
                         'API schemas must be named with an API suffix.', 
                         sdfPrim.path)
         
-
-        if self.isApi and not self.isAppliedAPISchema and self.isPrivateApply:
-            raise _GetSchemaDefException("Non-applied API schema cannot be "
-                                "tagged as private-apply", sdfPrim.path)
-
         if self.isApi and sdfPrim.path.name != "APISchemaBase" and \
             (not self.parentCppClassName):
             raise _GetSchemaDefException(
@@ -497,15 +495,12 @@ class ClassInfo(object):
             raise _GetSchemaDefException(
                 'Non API schemas cannot have non-empty apiSchemaType value.', 
                 sdfPrim.path)
+        
+        if self.fallbackPrimTypes and not self.isConcrete:
+            raise _GetSchemaDefException(
+                "fallbackPrimTypes can only be used as a customData field on "
+                "concrete typed schema classes", sdfPrim.path)
 
-        if (not self.isApi or not self.isAppliedAPISchema) and \
-                self.isPrivateApply:
-            raise _GetSchemaDefException('Non API schemas or non-applied API '
-                                'schemas cannot be marked with '
-                                'isPrivateApply, only applied API schemas '
-                                'have an Apply() method generated. ',
-                                sdfPrim.path)
-         
     def GetHeaderFile(self):
         return self.baseFileName + '.h'
 
@@ -526,10 +521,10 @@ class ClassInfo(object):
 def _ValidateFields(spec):
     # The schema registry will ignore these fields if they are discovered 
     # in a generatedSchema.usda file, but we want to allow them in schema.usda.
-    whitelist = ["inheritPaths", "customData", "specifier"]
+    includeList = ["inheritPaths", "customData", "specifier"]
 
     invalidFields = [key for key in spec.ListInfoKeys()
-        if Usd.SchemaRegistry.IsDisallowedField(key) and key not in whitelist]
+        if Usd.SchemaRegistry.IsDisallowedField(key) and key not in includeList]
     if not invalidFields:
         return True
 
@@ -1099,6 +1094,7 @@ def GenerateRegistry(codeGenPath, filePath, classes, validate, env):
         Print.Err("ERROR: Could not remove GLOBAL prim.")
     allAppliedAPISchemas = []
     allMultipleApplyAPISchemaNamespaces = {}
+    allFallbackSchemaPrimTypes = {}
     for p in flatStage.GetPseudoRoot().GetAllChildren():
         # If this is an API schema, check if it's applied and record necessary
         # information.
@@ -1133,6 +1129,12 @@ def GenerateRegistry(codeGenPath, filePath, classes, validate, env):
                     "prim metadata fallbacks" % str(invalidMetadata) , 
                     p.GetPath())
 
+        if p.HasAuthoredTypeName():
+            fallbackTypes = p.GetCustomDataByKey(FALLBACK_TYPES)
+            if fallbackTypes:
+                allFallbackSchemaPrimTypes[p.GetName()] = \
+                    Vt.TokenArray(fallbackTypes)
+
         p.ClearCustomData()
         for myproperty in p.GetAuthoredProperties():
             myproperty.ClearCustomData()
@@ -1142,14 +1144,19 @@ def GenerateRegistry(codeGenPath, filePath, classes, validate, env):
         flatStage.RemovePrim(p)
         
     # Set layer's comment to indicate that the file is generated.
-    flatLayer.comment = 'WARNING: THIS FILE IS GENERATED.  DO NOT EDIT.'
+    flatLayer.comment = 'WARNING: THIS FILE IS GENERATED BY usdGenSchema. '\
+                        ' DO NOT EDIT.'
 
     # Add the list of all applied and multiple-apply API schemas.
-    if len(allAppliedAPISchemas) > 0 or len(allMultipleApplyAPISchemaNamespaces) > 0:
+    if allAppliedAPISchemas or allMultipleApplyAPISchemaNamespaces:
         flatLayer.customLayerData = {
                 'appliedAPISchemas' : Vt.StringArray(allAppliedAPISchemas),
                 'multipleApplyAPISchemas' : allMultipleApplyAPISchemaNamespaces
         }
+
+    if allFallbackSchemaPrimTypes:
+        flatLayer.GetPrimAtPath('/').SetInfo(Usd.Tokens.fallbackPrimTypes, 
+                                             allFallbackSchemaPrimTypes)
 
     #
     # Generate Schematics

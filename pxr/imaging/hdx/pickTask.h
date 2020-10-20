@@ -52,10 +52,6 @@ PXR_NAMESPACE_OPEN_SCOPE
     /* Task context */               \
     (pickParams)                     \
                                      \
-    /* Hit mode */                   \
-    (hitFirst)                       \
-    (hitAll)                         \
-                                     \
     /* Pick target */                \
     (pickPrimsAndInstances)          \
     (pickFaces)                      \
@@ -71,8 +67,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 TF_DECLARE_PUBLIC_TOKENS(HdxPickTokens, HDX_API, HDX_PICK_TOKENS);
 
 class HdStRenderPassState;
-class HdStShaderCode;
-typedef boost::shared_ptr<HdStShaderCode> HdStShaderCodeSharedPtr;
+using HdStShaderCodeSharedPtr = std::shared_ptr<class HdStShaderCode>;
 
 /// Pick task params. This contains render-style state (for example), but is
 /// augmented by HdxPickTaskContextParams, which is passed in on the task
@@ -123,7 +118,6 @@ struct HdxPickTaskContextParams
 
     HdxPickTaskContextParams()
         : resolution(128, 128)
-        , hitMode(HdxPickTokens->hitFirst)
         , pickTarget(HdxPickTokens->pickPrimsAndInstances)
         , resolveMode(HdxPickTokens->resolveNearestToCamera)
         , doUnpickablesOcclude(false)
@@ -136,7 +130,6 @@ struct HdxPickTaskContextParams
     {}
 
     GfVec2i resolution;
-    TfToken hitMode;
     TfToken pickTarget;
     TfToken resolveMode;
     bool doUnpickablesOcclude;

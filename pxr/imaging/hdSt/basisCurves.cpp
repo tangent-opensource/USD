@@ -27,7 +27,7 @@
 #include "pxr/imaging/hdSt/basisCurvesComputations.h"
 #include "pxr/imaging/hdSt/basisCurvesShaderKey.h"
 #include "pxr/imaging/hdSt/basisCurvesTopology.h"
-#include "pxr/imaging/hdSt/bufferArrayRangeGL.h"
+#include "pxr/imaging/hdSt/bufferArrayRange.h"
 #include "pxr/imaging/hdSt/drawItem.h"
 #include "pxr/imaging/hdSt/extCompGpuComputation.h"
 #include "pxr/imaging/hdSt/geometricShader.h"
@@ -35,6 +35,8 @@
 #include "pxr/imaging/hdSt/material.h"
 #include "pxr/imaging/hdSt/resourceRegistry.h"
 #include "pxr/imaging/hdSt/rprimUtils.h"
+
+#include "pxr/base/arch/hash.h"
 
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/matrix4f.h"
@@ -66,10 +68,7 @@ HdStBasisCurves::HdStBasisCurves(SdfPath const& id,
 }
 
 
-HdStBasisCurves::~HdStBasisCurves()
-{
-    /*NOTHING*/
-}
+HdStBasisCurves::~HdStBasisCurves() = default;
 
 void
 HdStBasisCurves::Sync(HdSceneDelegate *delegate,
@@ -368,9 +367,10 @@ HdStBasisCurves::_InitRepr(TfToken const &reprToken, HdDirtyBits *dirtyBits)
                 continue;
             }
 
-            HdDrawItem *drawItem = new HdStDrawItem(&_sharedData);
+            HdRepr::DrawItemUniquePtr drawItem =
+                std::make_unique<HdStDrawItem>(&_sharedData);
             HdDrawingCoord *drawingCoord = drawItem->GetDrawingCoord();
-            repr->AddDrawItem(drawItem);
+            repr->AddDrawItem(std::move(drawItem));
             if (desc.geomStyle == HdBasisCurvesGeomStyleWire) {
                 // Why does geom style require this change?
                 drawingCoord->SetTopologyIndex(HdStBasisCurves::HullTopology);
@@ -594,7 +594,7 @@ HdStBasisCurves::_PopulateTopology(HdSceneDelegate *sceneDelegate,
                     HdTokens->topology, bufferSpecs, HdBufferArrayUsageHint());
 
             // add sources to update queue
-            resourceRegistry->AddSources(range, sources);
+            resourceRegistry->AddSources(range, std::move(sources));
             rangeInstance.SetValue(range);
         }
 
@@ -664,7 +664,7 @@ HdStBasisCurves::_PopulateVertexPrimvars(HdSceneDelegate *sceneDelegate,
     HdBufferSourceSharedPtrVector sources;
     HdBufferSourceSharedPtrVector reserveOnlySources;
     HdBufferSourceSharedPtrVector separateComputationSources;
-    HdComputationSharedPtrVector computations;
+    HdStComputationSharedPtrVector computations;
     sources.reserve(primvars.size());
 
     HdSt_GetExtComputationPrimvarsComputations(
@@ -704,15 +704,21 @@ HdStBasisCurves::_PopulateVertexPrimvars(HdSceneDelegate *sceneDelegate,
                 }
             }
 
-            // XXX: this really needs to happen for all primvars.
+            // XXX: interpolation really needs to happen for all primvars.
             if (primvar.name == HdTokens->widths) {
-                sources.push_back(HdBufferSourceSharedPtr(
-                        new HdSt_BasisCurvesWidthsInterpolaterComputation(
-                            _topology.get(), value.Get<VtFloatArray>())));
+                VtFloatArray array =  value.Get<VtFloatArray>();
+                if (!array.empty()) {
+                    sources.push_back(HdBufferSourceSharedPtr(
+                            new HdSt_BasisCurvesWidthsInterpolaterComputation(
+                                _topology.get(), array)));
+                }
             } else if (primvar.name == HdTokens->normals) {
-                sources.push_back(HdBufferSourceSharedPtr(
-                        new HdSt_BasisCurvesNormalsInterpolaterComputation(
-                            _topology.get(), value.Get<VtVec3fArray>())));
+                VtVec3fArray array = value.Get<VtVec3fArray>();
+                if (!array.empty()) {
+                    sources.push_back(HdBufferSourceSharedPtr(
+                            new HdSt_BasisCurvesNormalsInterpolaterComputation(
+                                _topology.get(), array)));
+                }
             } else {
                 sources.push_back(HdBufferSourceSharedPtr(
                         new HdVtBufferSource(primvar.name, value)));
@@ -744,7 +750,7 @@ HdStBasisCurves::_PopulateVertexPrimvars(HdSceneDelegate *sceneDelegate,
     HdBufferSpecVector bufferSpecs;
     HdBufferSpec::GetBufferSpecs(sources, &bufferSpecs);
     HdBufferSpec::GetBufferSpecs(reserveOnlySources, &bufferSpecs);
-    HdBufferSpec::GetBufferSpecs(computations, &bufferSpecs);
+    HdStGetBufferSpecsFromCompuations(computations, &bufferSpecs);
 
     HdBufferArrayRangeSharedPtr range =
         resourceRegistry->UpdateNonUniformBufferArrayRange(
@@ -763,13 +769,14 @@ HdStBasisCurves::_PopulateVertexPrimvars(HdSceneDelegate *sceneDelegate,
     // add sources to update queue
     if (!sources.empty()) {
         resourceRegistry->AddSources(drawItem->GetVertexPrimvarRange(),
-                                     sources);
+                                     std::move(sources));
     }
-    if (!computations.empty()) {
-        TF_FOR_ALL(it, computations) {
-            resourceRegistry->AddComputation(drawItem->GetVertexPrimvarRange(),
-                                             *it);
-        }
+    // add gpu computations to queue.
+    for (auto const& compQueuePair : computations) {
+        HdComputationSharedPtr const& comp = compQueuePair.first;
+        HdStComputeQueue queue = compQueuePair.second;
+        resourceRegistry->AddComputation(
+            drawItem->GetVertexPrimvarRange(), comp, queue);
     }
     if (!separateComputationSources.empty()) {
         TF_FOR_ALL(it, separateComputationSources) {
@@ -843,7 +850,7 @@ HdStBasisCurves::_PopulateElementPrimvars(HdSceneDelegate *sceneDelegate,
 
     if (!sources.empty()) {
         resourceRegistry->AddSources(drawItem->GetElementPrimvarRange(),
-                                 sources);
+                                     std::move(sources));
     }
 }
 
@@ -856,26 +863,26 @@ HdSt_HasResource(HdStDrawItem* drawItem, const TfToken& resourceToken){
 
     typedef HdBufferArrayRangeSharedPtr HdBarPtr;
     if (HdBarPtr const& bar = drawItem->GetConstantPrimvarRange()){
-        HdStBufferArrayRangeGLSharedPtr bar_ =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar);
+        HdStBufferArrayRangeSharedPtr bar_ =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar);
         hasAuthoredResouce |= bool(bar_->GetResource(resourceToken));
     }
     if (HdBarPtr const& bar = drawItem->GetVertexPrimvarRange()) {
-        HdStBufferArrayRangeGLSharedPtr bar_ =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar);
+        HdStBufferArrayRangeSharedPtr bar_ =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar);
         hasAuthoredResouce |= bool(bar_->GetResource(resourceToken));
     }
     if (HdBarPtr const& bar = drawItem->GetElementPrimvarRange()){
-        HdStBufferArrayRangeGLSharedPtr bar_ =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar);
+        HdStBufferArrayRangeSharedPtr bar_ =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar);
 
         hasAuthoredResouce |= bool(bar_->GetResource(resourceToken));
     }
     int instanceNumLevels = drawItem->GetInstancePrimvarNumLevels();
     for (int i = 0; i < instanceNumLevels; ++i) {
         if (HdBarPtr const& bar = drawItem->GetInstancePrimvarRange(i)) {
-            HdStBufferArrayRangeGLSharedPtr bar_ =
-                std::static_pointer_cast<HdStBufferArrayRangeGL> (bar);
+            HdStBufferArrayRangeSharedPtr bar_ =
+                std::static_pointer_cast<HdStBufferArrayRange> (bar);
 
             hasAuthoredResouce |= bool(bar_->GetResource(resourceToken));
         }
@@ -931,4 +938,3 @@ HdStBasisCurves::GetInitialDirtyBitsMask() const
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE
-

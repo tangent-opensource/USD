@@ -23,11 +23,13 @@
 //
 #include "pxr/imaging/hgiGL/ops.h"
 #include "pxr/imaging/hgiGL/buffer.h"
+#include "pxr/imaging/hgiGL/computePipeline.h"
 #include "pxr/imaging/hgiGL/conversions.h"
 #include "pxr/imaging/hgiGL/diagnostic.h"
-#include "pxr/imaging/hgiGL/graphicsEncoder.h"
-#include "pxr/imaging/hgiGL/pipeline.h"
+#include "pxr/imaging/hgiGL/graphicsCmds.h"
+#include "pxr/imaging/hgiGL/graphicsPipeline.h"
 #include "pxr/imaging/hgiGL/resourceBindings.h"
+#include "pxr/imaging/hgiGL/shaderProgram.h"
 #include "pxr/imaging/hgiGL/texture.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -36,10 +38,13 @@ PXR_NAMESPACE_OPEN_SCOPE
 HgiGLOpsFn
 HgiGLOps::PushDebugGroup(const char* label)
 {
-    return [label] {
+    // Make copy of string string since the lamda will execute later.
+    std::string lbl = label;
+
+    return [lbl] {
         #if defined(GL_KHR_debug)
         if (GLEW_KHR_debug) {
-            glPushDebugGroup(GL_DEBUG_SOURCE_THIRD_PARTY, 0, -1, label);
+            glPushDebugGroup(GL_DEBUG_SOURCE_THIRD_PARTY, 0, -1, lbl.c_str());
         }
         #endif
     };
@@ -76,49 +81,158 @@ HgiGLOps::CopyTextureGpuToCpu(HgiTextureGpuToCpuOp const& copyOp)
 
         HgiTextureDesc const& texDesc = srcTexture->GetDescriptor();
 
-        uint32_t layerCnt = copyOp.startLayer + copyOp.numLayers;
-        if (!TF_VERIFY(texDesc.layerCount >= layerCnt,
-            "Texture has less layers than attempted to be copied")) {
-            return;
-        }
+    if (!TF_VERIFY(texDesc.layerCount > copyOp.sourceTexelOffset[2],
+        "Trying to copy an invalid texture layer/slice")) {
+        return;
+    }
 
-        GLenum glInternalFormat = 0;
         GLenum glFormat = 0;
         GLenum glPixelType = 0;
 
-        if (texDesc.usage & HgiTextureUsageBitsColorTarget) {
+        if (texDesc.usage & HgiTextureUsageBitsDepthTarget) {
+            TF_VERIFY(texDesc.format == HgiFormatFloat32 ||
+                      texDesc.format == HgiFormatFloat32UInt8);
+            // XXX: Copy only the depth component. To copy stencil, we'd need
+            // to set the format to GL_STENCIL_INDEX separately..
+            glFormat = GL_DEPTH_COMPONENT;
+            glPixelType = GL_FLOAT;
+        } else if (texDesc.usage & HgiTextureUsageBitsStencilTarget) {
+            TF_WARN("Copying a stencil-only texture is unsupported currently\n"
+                   );
+            return;
+        } else {
             HgiGLConversions::GetFormat(
                 texDesc.format,
                 &glFormat,
-                &glPixelType,
-                &glInternalFormat);
-        } else if (texDesc.usage & HgiTextureUsageBitsDepthTarget) {
-            TF_VERIFY(texDesc.format == HgiFormatFloat32);
-            glFormat = GL_DEPTH_COMPONENT;
-            glPixelType = GL_FLOAT;
-            glInternalFormat = GL_DEPTH_COMPONENT32F;
-        } else {
-            TF_CODING_ERROR("Unknown HgTextureUsage bit");
+                &glPixelType);
         }
 
-        // Make sure writes are finished before we read from the texture
-        glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        if (HgiIsCompressed(texDesc.format)) {
+            TF_CODING_ERROR(
+                "Copying from compressed GPU texture not supported.");
+            return;
+        }
 
         glGetTextureSubImage(
             srcTexture->GetTextureId(),
             copyOp.mipLevel,
             copyOp.sourceTexelOffset[0], // x offset
             copyOp.sourceTexelOffset[1], // y offset
-            copyOp.sourceTexelOffset[2], // z offset
+            copyOp.sourceTexelOffset[2], // z offset (depth or layer)
             texDesc.dimensions[0], // width
             texDesc.dimensions[1], // height
-            texDesc.dimensions[2], // layerCnt
+            texDesc.dimensions[2], // layerCnt or depth
             glFormat,
             glPixelType,
             copyOp.destinationBufferByteSize,
             copyOp.cpuDestinationBuffer);
 
         HGIGL_POST_PENDING_GL_ERRORS();
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::CopyTextureCpuToGpu(HgiTextureCpuToGpuOp const& copyOp)
+{
+    return [copyOp] {
+        HgiTextureDesc const& desc =
+            copyOp.gpuDestinationTexture->GetDescriptor();
+
+        GLenum internalFormat = 0;
+        GLenum format = 0;
+        GLenum type = 0;
+
+        HgiGLConversions::GetFormat(desc.format,&format,&type,&internalFormat);
+
+        const bool isCompressed = HgiIsCompressed(desc.format);
+        GfVec3i const& offsets = copyOp.destinationTexelOffset;
+        GfVec3i const& dimensions = desc.dimensions;
+
+        HgiGLTexture* dstTexture = static_cast<HgiGLTexture*>(
+            copyOp.gpuDestinationTexture.Get());
+
+        switch(desc.type) {
+        case HgiTextureType2D:
+            if (isCompressed) {
+                glCompressedTextureSubImage2D(
+                    dstTexture->GetTextureId(),
+                    copyOp.mipLevel,
+                    offsets[0], offsets[1],
+                    dimensions[0], dimensions[1],
+                    format,
+                    copyOp.bufferByteSize,
+                    copyOp.cpuSourceBuffer);
+            } else {
+                glTextureSubImage2D(
+                    dstTexture->GetTextureId(),
+                    copyOp.mipLevel,
+                    offsets[0], offsets[1],
+                    dimensions[0], dimensions[1],
+                    format,
+                    type,
+                    copyOp.cpuSourceBuffer);
+            }
+            break;
+        case HgiTextureType3D:
+            if (isCompressed) {
+                glCompressedTextureSubImage3D(
+                    dstTexture->GetTextureId(),
+                    copyOp.mipLevel,
+                    offsets[0], offsets[1], offsets[2],
+                    dimensions[0], dimensions[1], dimensions[2],
+                    format,
+                    copyOp.bufferByteSize,
+                    copyOp.cpuSourceBuffer);
+            } else {
+                glTextureSubImage3D(
+                    dstTexture->GetTextureId(),
+                    copyOp.mipLevel,
+                    offsets[0], offsets[1], offsets[2],
+                    dimensions[0], dimensions[1], dimensions[2],
+                    format,
+                    type,
+                    copyOp.cpuSourceBuffer);
+            }
+            break;
+        default:
+            TF_CODING_ERROR("Unsupported HgiTextureType enum value");
+            break;
+        }
+
+        HGIGL_POST_PENDING_GL_ERRORS();
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::CopyBufferGpuToGpu(HgiBufferGpuToGpuOp const& copyOp)
+{
+    return [copyOp] {
+        HgiBufferHandle const& srcBufHandle = copyOp.gpuSourceBuffer;
+        HgiGLBuffer* srcBuffer = static_cast<HgiGLBuffer*>(srcBufHandle.Get());
+
+        if (!TF_VERIFY(srcBuffer && srcBuffer->GetBufferId(),
+            "Invalid source buffer handle")) {
+            return;
+        }
+
+        HgiBufferHandle const& dstBufHandle = copyOp.gpuDestinationBuffer;
+        HgiGLBuffer* dstBuffer = static_cast<HgiGLBuffer*>(dstBufHandle.Get());
+
+        if (!TF_VERIFY(dstBuffer && dstBuffer->GetBufferId(),
+            "Invalid destination buffer handle")) {
+            return;
+        }
+
+        if (copyOp.byteSize == 0) {
+            TF_WARN("The size of the data to copy was zero (aborted)");
+            return;
+        }
+
+        glCopyNamedBufferSubData(srcBuffer->GetBufferId(),
+                                 dstBuffer->GetBufferId(),
+                                 copyOp.sourceByteOffset,
+                                 copyOp.destinationByteOffset,
+                                 copyOp.byteSize);
     };
 }
 
@@ -149,124 +263,36 @@ HgiGLOps::CopyBufferCpuToGpu(HgiBufferCpuToGpuOp const& copyOp)
             copyOp.byteSize,
             src);
 
-        // Make sure the copy is finished before reads from buffer.
-        glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+        HGIGL_POST_PENDING_GL_ERRORS();
     };
 }
 
-HgiGLOpsFn
-HgiGLOps::ResolveImage(HgiResolveImageOp const& resolveOp)
+HgiGLOpsFn 
+HgiGLOps::CopyBufferGpuToCpu(HgiBufferGpuToCpuOp const& copyOp)
 {
-    return [resolveOp] {
-        // Create framebuffers for resolve.
-        uint32_t readFramebuffer;
-        uint32_t writeFramebuffer;
-        glCreateFramebuffers(1, &readFramebuffer);
-        glCreateFramebuffers(1, &writeFramebuffer);
-
-        // Gather source and destination textures
-        HgiGLTexture* glSrcTexture = static_cast<HgiGLTexture*>(
-            resolveOp.source.Get());
-        HgiGLTexture* glDstTexture = static_cast<HgiGLTexture*>(
-            resolveOp.destination.Get());
-
-        if (!glSrcTexture || !glDstTexture) {
-            TF_CODING_ERROR("No textures provided for resolve");
+    return [copyOp] {
+        if (copyOp.byteSize == 0 ||
+            !copyOp.cpuDestinationBuffer ||
+            !copyOp.gpuSourceBuffer)
+        {
             return;
         }
 
-        uint32_t readAttachment = glSrcTexture->GetTextureId();
-        TF_VERIFY(glIsTexture(readAttachment), "Source is not a texture");
-        uint32_t writeAttachment = glDstTexture->GetTextureId();
-        TF_VERIFY(glIsTexture(writeAttachment), "Destination is not a texture");
+        HgiGLBuffer* glBuffer = static_cast<HgiGLBuffer*>(
+            copyOp.gpuSourceBuffer.Get());
 
-        // Update framebuffer bindings
-        if (resolveOp.usage & HgiTextureUsageBitsDepthTarget) {
-            // Depth-only, so no color attachments for read or write
-            // Clear previous color attachment since all attachments must be
-            // written to from fragment shader or texels will be undefined.
-            GLenum drawBufs[1] = {GL_NONE};
-            glNamedFramebufferDrawBuffers(
-                readFramebuffer, 1, drawBufs);
-            glNamedFramebufferDrawBuffers(
-                writeFramebuffer, 1, drawBufs);
+        // Offset into the dst buffer
+        const char* dst = ((const char*) copyOp.cpuDestinationBuffer) +
+            copyOp.destinationByteOffset;
 
-            glNamedFramebufferTexture(
-                readFramebuffer, GL_COLOR_ATTACHMENT0, 0, /*level*/0);
-            glNamedFramebufferTexture(
-                writeFramebuffer, GL_COLOR_ATTACHMENT0, 0, /*level*/0);
+        // Offset into the src buffer
+        GLintptr srcOffset = copyOp.sourceByteOffset;
 
-            glNamedFramebufferTexture(
-                readFramebuffer,
-                GL_DEPTH_ATTACHMENT,
-                readAttachment,
-                /*level*/ 0);
-            glNamedFramebufferTexture(
-                writeFramebuffer,
-                GL_DEPTH_ATTACHMENT,
-                writeAttachment,
-                /*level*/ 0);
-        } else {
-            // Color-only, so no depth attachments for read or write.
-            // Clear previous depth attachment since all attachments must be
-            // written to from fragment shader or texels will be undefined.
-            GLenum drawBufs[1] = {GL_COLOR_ATTACHMENT0};
-            glNamedFramebufferDrawBuffers(
-                readFramebuffer, 1, drawBufs);
-            glNamedFramebufferDrawBuffers(
-                writeFramebuffer, 1, drawBufs);
-
-            glNamedFramebufferTexture(
-                readFramebuffer, GL_DEPTH_ATTACHMENT, 0, /*level*/0);
-            glNamedFramebufferTexture(
-                writeFramebuffer, GL_DEPTH_ATTACHMENT, 0, /*level*/0);
-
-            glNamedFramebufferTexture(
-                readFramebuffer,
-                GL_COLOR_ATTACHMENT0,
-                readAttachment,
-                /*level*/ 0);
-            glNamedFramebufferTexture(
-                writeFramebuffer,
-                GL_COLOR_ATTACHMENT0,
-                writeAttachment,
-                /*level*/ 0);
-        }
-
-        GLenum status = glCheckNamedFramebufferStatus(readFramebuffer,
-                                                      GL_READ_FRAMEBUFFER);
-        TF_VERIFY(status == GL_FRAMEBUFFER_COMPLETE);
-
-        status = glCheckNamedFramebufferStatus(writeFramebuffer,
-                                               GL_DRAW_FRAMEBUFFER);
-        TF_VERIFY(status == GL_FRAMEBUFFER_COMPLETE);
-
-        // Resolve MSAA fbo to a regular fbo
-        GLbitfield mask = (resolveOp.usage & HgiTextureUsageBitsDepthTarget) ?
-                GL_DEPTH_BUFFER_BIT : GL_COLOR_BUFFER_BIT;
-
-        const GfVec4i& src = resolveOp.sourceRegion;
-        const GfVec4i& dst = resolveOp.destinationRegion;
-
-        // Bind resolve framebuffer
-        GLint restoreRead, restoreWrite;
-        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &restoreRead);
-        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &restoreWrite);
-
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer); // MS
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, writeFramebuffer);// regular
-
-        glBlitFramebuffer(
-            src[0], src[1], src[2], src[3],
-            dst[0], dst[1], dst[2], dst[3],
-            mask,
-            GL_NEAREST);
-
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, restoreRead);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, restoreWrite);
-
-        glDeleteFramebuffers(1, &readFramebuffer);
-        glDeleteFramebuffers(1, &writeFramebuffer);
+        glGetNamedBufferSubData(
+            glBuffer->GetBufferId(),
+            srcOffset,
+            copyOp.byteSize,
+            (void*)dst);
 
         HGIGL_POST_PENDING_GL_ERRORS();
     };
@@ -289,10 +315,20 @@ HgiGLOps::SetScissor(GfVec4i const& sc)
 }
 
 HgiGLOpsFn
-HgiGLOps::BindPipeline(HgiPipelineHandle pipeline)
+HgiGLOps::BindPipeline(HgiGraphicsPipelineHandle pipeline)
 {
     return [pipeline] {
-        if (HgiGLPipeline* p = static_cast<HgiGLPipeline*>(pipeline.Get())) {
+        if (HgiGLGraphicsPipeline* p = static_cast<HgiGLGraphicsPipeline*>(pipeline.Get())) {
+            p->BindPipeline();
+        }
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::BindPipeline(HgiComputePipelineHandle pipeline)
+{
+    return [pipeline] {
+        if (HgiGLComputePipeline* p = static_cast<HgiGLComputePipeline*>(pipeline.Get())) {
             p->BindPipeline();
         }
     };
@@ -307,6 +343,53 @@ HgiGLOps::BindResources(HgiResourceBindingsHandle res)
         {
             rb->BindResources();
         }
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::SetConstantValues(
+    HgiGraphicsPipelineHandle pipeline,
+    HgiShaderStage stages,
+    uint32_t bindIndex,
+    uint32_t byteSize,
+    const void* data)
+{
+    // The data provided could be local stack memory that goes out of scope
+    // before we execute this op. Make a copy to prevent that.
+    uint8_t* dataCopy = new uint8_t[byteSize];
+    memcpy(dataCopy, data, byteSize);
+
+    return [pipeline, bindIndex, byteSize, dataCopy] {
+        HgiGLShaderProgram* glProgram =
+            static_cast<HgiGLShaderProgram*>(
+                pipeline->GetDescriptor().shaderProgram.Get());
+        uint32_t ubo = glProgram->GetUniformBuffer(byteSize);
+        glNamedBufferData(ubo, byteSize, dataCopy, GL_STATIC_DRAW);
+        glBindBufferBase(GL_UNIFORM_BUFFER, bindIndex, ubo);
+        delete[] dataCopy;
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::SetConstantValues(
+    HgiComputePipelineHandle pipeline,
+    uint32_t bindIndex,
+    uint32_t byteSize,
+    const void* data)
+{
+    // The data provided could be local stack memory that goes out of scope
+    // before we execute this op. Make a copy to prevent that.
+    uint8_t* dataCopy = new uint8_t[byteSize];
+    memcpy(dataCopy, data, byteSize);
+
+    return [pipeline, bindIndex, byteSize, dataCopy] {
+        HgiGLShaderProgram* glProgram =
+            static_cast<HgiGLShaderProgram*>(
+                pipeline->GetDescriptor().shaderProgram.Get());
+        uint32_t ubo = glProgram->GetUniformBuffer(byteSize);
+        glNamedBufferData(ubo, byteSize, dataCopy, GL_STATIC_DRAW);
+        glBindBufferBase(GL_UNIFORM_BUFFER, bindIndex, ubo);
+        delete[] dataCopy;
     };
 }
 
@@ -340,16 +423,62 @@ HgiGLOps::BindVertexBuffers(
 }
 
 HgiGLOpsFn
+HgiGLOps::Draw(
+    HgiPrimitiveType primitiveType,
+    uint32_t vertexCount,
+    uint32_t firstVertex,
+    uint32_t instanceCount)
+{
+    return [primitiveType, vertexCount, firstVertex, instanceCount] {
+        TF_VERIFY(instanceCount>0);
+
+        glDrawArraysInstanced(
+            HgiGLConversions::GetPrimitiveType(primitiveType),
+            firstVertex,
+            vertexCount,
+            instanceCount);
+
+        HGIGL_POST_PENDING_GL_ERRORS();
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::DrawIndirect(
+    HgiPrimitiveType primitiveType,
+    HgiBufferHandle const& drawParameterBuffer,
+    uint32_t drawBufferOffset,
+    uint32_t drawCount,
+    uint32_t stride)
+{
+    return [primitiveType, drawParameterBuffer, drawBufferOffset, drawCount, 
+            stride] {
+
+        HgiGLBuffer* drawBuf =
+            static_cast<HgiGLBuffer*>(drawParameterBuffer.Get());
+
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, drawBuf->GetBufferId());
+
+        glMultiDrawArraysIndirect(
+            HgiGLConversions::GetPrimitiveType(primitiveType),
+            reinterpret_cast<const void*>(drawBufferOffset),
+            drawCount,
+            stride);
+
+        HGIGL_POST_PENDING_GL_ERRORS();
+    };
+}
+
+HgiGLOpsFn
 HgiGLOps::DrawIndexed(
+    HgiPrimitiveType primitiveType,
     HgiBufferHandle const& indexBuffer,
     uint32_t indexCount,
     uint32_t indexBufferByteOffset,
     uint32_t vertexOffset,
-    uint32_t instanceCount,
-    uint32_t firstInstance)
+    uint32_t instanceCount)
 {
-    return [indexBuffer, indexCount, indexBufferByteOffset,
-        vertexOffset, instanceCount, firstInstance] {
+    return [primitiveType, indexBuffer, indexCount, indexBufferByteOffset,
+            vertexOffset, instanceCount] {
         TF_VERIFY(instanceCount>0);
 
         HgiGLBuffer* indexBuf = static_cast<HgiGLBuffer*>(indexBuffer.Get());
@@ -361,7 +490,7 @@ HgiGLOps::DrawIndexed(
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuf->GetBufferId());
 
         glDrawElementsInstancedBaseVertex(
-            GL_TRIANGLES, // XXX GL_PATCHES for tessellation
+            HgiGLConversions::GetPrimitiveType(primitiveType),
             indexCount,
             GL_UNSIGNED_INT,
             (void*)(uintptr_t(indexBufferByteOffset)),
@@ -373,9 +502,55 @@ HgiGLOps::DrawIndexed(
 }
 
 HgiGLOpsFn
+HgiGLOps::DrawIndexedIndirect(
+    HgiPrimitiveType primitiveType,
+    HgiBufferHandle const& indexBuffer,
+    HgiBufferHandle const& drawParameterBuffer,
+    uint32_t drawBufferOffset,
+    uint32_t drawCount,
+    uint32_t stride)
+{
+    return [primitiveType, indexBuffer, drawParameterBuffer, drawBufferOffset,
+            drawCount, stride] {
+
+        HgiGLBuffer* indexBuf = static_cast<HgiGLBuffer*>(indexBuffer.Get());
+        HgiBufferDesc const& indexDesc = indexBuf->GetDescriptor();
+
+        // We assume 32bit indices: GL_UNSIGNED_INT
+        TF_VERIFY(indexDesc.usage & HgiBufferUsageIndex32);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuf->GetBufferId());
+
+        HgiGLBuffer* drawBuf =
+            static_cast<HgiGLBuffer*>(drawParameterBuffer.Get());
+
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, drawBuf->GetBufferId());
+
+        glMultiDrawElementsIndirect(
+            HgiGLConversions::GetPrimitiveType(primitiveType),
+            GL_UNSIGNED_INT,
+            reinterpret_cast<const void*>(drawBufferOffset),
+            drawCount,
+            stride);
+
+        HGIGL_POST_PENDING_GL_ERRORS();
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::Dispatch(int dimX, int dimY)
+{
+    return [dimX, dimY] {
+        glDispatchCompute(dimX, dimY, 1);
+
+        HGIGL_POST_PENDING_GL_ERRORS();
+    };
+}
+
+HgiGLOpsFn
 HgiGLOps::BindFramebufferOp(
     HgiGLDevice* device,
-    HgiGraphicsEncoderDesc const& desc)
+    HgiGraphicsCmdsDesc const& desc)
 {
     return [device, desc] {
         TF_VERIFY(desc.HasAttachments(), "Missing attachments");
@@ -383,6 +558,7 @@ HgiGLOps::BindFramebufferOp(
         uint32_t framebuffer = device->AcquireFramebuffer(desc);
 
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glEnable(GL_FRAMEBUFFER_SRGB);
 
         bool blendEnabled = false;
 
@@ -390,6 +566,12 @@ HgiGLOps::BindFramebufferOp(
         for (size_t i=0; i<desc.colorAttachmentDescs.size(); i++) {
             HgiAttachmentDesc const& colorAttachment =
                 desc.colorAttachmentDescs[i];
+
+            if (colorAttachment.format == HgiFormatInvalid) {
+                TF_CODING_ERROR(
+                    "Binding framebuffer with invalid format "
+                    "for color attachment %zu.", i);
+            }
 
             if (colorAttachment.loadOp == HgiAttachmentLoadOpClear) {
                 glClearBufferfv(GL_COLOR, i, colorAttachment.clearValue.data());
@@ -418,6 +600,15 @@ HgiGLOps::BindFramebufferOp(
 
         HgiAttachmentDesc const& depthAttachment =
             desc.depthAttachmentDesc;
+
+        if (desc.depthTexture) {
+            if (depthAttachment.format == HgiFormatInvalid) {
+                TF_CODING_ERROR(
+                    "Binding framebuffer with invalid format "
+                    "for depth attachment.");
+            }
+        }
+
         if (desc.depthTexture &&
             depthAttachment.loadOp == HgiAttachmentLoadOpClear) {
             glClearBufferfv(GL_DEPTH, 0, depthAttachment.clearValue.data());
@@ -431,6 +622,51 @@ HgiGLOps::BindFramebufferOp(
         }
 
         HGIGL_POST_PENDING_GL_ERRORS();
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::GenerateMipMaps(HgiTextureHandle const& texture)
+{
+    return [texture] {
+        HgiGLTexture* glTex = static_cast<HgiGLTexture*>(texture.Get());
+        if (glTex) {
+            glGenerateTextureMipmap(glTex->GetTextureId());
+            HGIGL_POST_PENDING_GL_ERRORS();
+        }
+    };
+}
+
+HgiGLOpsFn
+HgiGLOps::ResolveFramebuffer(
+    HgiGLDevice* device,
+    HgiGraphicsCmdsDesc const &graphicsCmds)
+{
+    return [device, graphicsCmds] {
+        const uint32_t resolvedFramebuffer = device->AcquireFramebuffer(
+            graphicsCmds, /* resolved = */ true);
+        if (!resolvedFramebuffer) {
+            return;
+        }
+
+        const uint32_t framebuffer = device->AcquireFramebuffer(
+            graphicsCmds);
+        
+        GLbitfield mask = 0;
+        if (!graphicsCmds.colorResolveTextures.empty()) {
+            mask |= GL_COLOR_BUFFER_BIT;
+        }
+        if (graphicsCmds.depthResolveTexture) {
+            mask |= GL_DEPTH_BUFFER_BIT;
+        }
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolvedFramebuffer);
+        glEnable(GL_FRAMEBUFFER_SRGB);
+        glBlitFramebuffer(0, 0, graphicsCmds.width, graphicsCmds.height,
+                          0, 0, graphicsCmds.width, graphicsCmds.height,
+                          mask,
+                          GL_NEAREST);
     };
 }
 

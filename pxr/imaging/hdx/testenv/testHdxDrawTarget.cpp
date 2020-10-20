@@ -39,7 +39,6 @@
 #include "pxr/imaging/hdSt/renderDelegate.h"
 
 #include "pxr/imaging/hdx/drawTargetTask.h"
-#include "pxr/imaging/hdx/drawTargetResolveTask.h"
 #include "pxr/imaging/hdx/simpleLightTask.h"
 #include "pxr/imaging/hdx/renderSetupTask.h"
 #include "pxr/imaging/hdx/renderTask.h"
@@ -82,7 +81,9 @@ int main(int argc, char *argv[])
     GLfloat clearColor[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
     GLfloat clearDepth[1] = { 1.0f };
 
-    std::unique_ptr<Hgi> hgi(Hgi::GetPlatformDefaultHgi());
+    // Hgi and HdDriver should be constructed before HdEngine to ensure they
+    // are destructed last. Hgi may be used during engine/delegate destruction.
+    HgiUniquePtr hgi = Hgi::CreatePlatformDefaultHgi();
     HdDriver driver{HgiTokens->renderDriver, VtValue(hgi.get())};
 
     HdStRenderDelegate renderDelegate;
@@ -100,16 +101,13 @@ int main(int argc, char *argv[])
     SdfPath simpleLightTask("/simpleLightTask");
     SdfPath renderSetupTask("/renderSetupTask");
     SdfPath renderTask("/renderTask");
-    SdfPath drawTargetResolveTask("/drawTargetResolveTask");
     delegate->AddSimpleLightTask(simpleLightTask);
     delegate->AddDrawTargetTask(drawTargetTask);
-    delegate->AddDrawTargetResolveTask(drawTargetResolveTask);
     delegate->AddRenderSetupTask(renderSetupTask);
     delegate->AddRenderTask(renderTask);
     HdTaskSharedPtrVector tasks;
     tasks.push_back(index->GetTask(simpleLightTask));
     tasks.push_back(index->GetTask(drawTargetTask));
-    tasks.push_back(index->GetTask(drawTargetResolveTask));
     tasks.push_back(index->GetTask(renderSetupTask));
     tasks.push_back(index->GetTask(renderTask));
 
@@ -166,7 +164,7 @@ int main(int argc, char *argv[])
     HdMaterialNetworkMap material1;
     HdMaterialNetwork& network1 = material1.map[terminalType];
     HdMaterialNode terminal1;
-    terminal1.path = materialId.AppendPath(SdfPath("/Shader"));
+    terminal1.path = materialId.AppendPath(SdfPath("Shader"));
     terminal1.identifier = sdrSurfaceNode->GetIdentifier();
     terminal1.parameters[TfToken("texColor")] = VtValue(GfVec3f(1));
 
@@ -180,8 +178,20 @@ int main(int argc, char *argv[])
     // to do a lookup of the prim via GetTextureResource on the sceneDelegate.
     // The file path cannot be empty though, because if it is empty HdSt will
     // use the fallback value of the texture node.
+    //
+    // Note that we do not author an SdfPath or std::string here so that
+    // the HdSceneDelegate::GetTextureResource API is used rather than the
+    // storm texture system.
     textureNode.parameters[TfToken("file")] = 
-        VtValue(drawTargetAttachmentId.GetString());
+        VtValue(drawTargetAttachmentId);
+    textureNode.parameters[TfToken("wrapS")] =
+        VtValue(TfToken("repeat"));
+    textureNode.parameters[TfToken("wrapT")] =
+        VtValue(TfToken("repeat"));
+    textureNode.parameters[TfToken("minFilter")] =
+        VtValue(TfToken("linear"));
+    textureNode.parameters[TfToken("magFilter")] =
+        VtValue(TfToken("linear"));
 
     // Insert connection between texture node and terminal
     HdMaterialRelationship rel;
@@ -189,14 +199,14 @@ int main(int argc, char *argv[])
     rel.inputName = TfToken("rgb");
     rel.outputId = terminal1.path;
     rel.outputName = TfToken("texColor");
-    network1.relationships.emplace_back(std::move(rel));
+    network1.relationships.push_back(std::move(rel));
 
     // Insert texture node
-    network1.nodes.emplace_back(std::move(textureNode));
+    network1.nodes.push_back(std::move(textureNode));
 
     // Insert terminal
     material1.terminals.push_back(terminal1.path);
-    network1.nodes.emplace_back(std::move(terminal1)); // must be last in vector
+    network1.nodes.push_back(std::move(terminal1)); // must be last in vector
     delegate->AddMaterialResource(
         materialId,
         VtValue(material1));

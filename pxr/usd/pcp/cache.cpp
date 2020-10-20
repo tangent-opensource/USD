@@ -264,7 +264,9 @@ PcpCache::RequestPayloads( const SdfPathSet & pathsToInclude,
 void 
 PcpCache::RequestLayerMuting(const std::vector<std::string>& layersToMute,
                              const std::vector<std::string>& layersToUnmute,
-                             PcpChanges* changes)
+                             PcpChanges* changes,
+                             std::vector<std::string>* newLayersMuted,
+                             std::vector<std::string>* newLayersUnmuted)
 {
     ArResolverContextBinder binder(_pathResolverContext);
 
@@ -344,6 +346,14 @@ PcpCache::RequestLayerMuting(const std::vector<std::string>& layersToMute,
             }
         }
     }
+
+    // update out newLayersMuted and newLayersUnmuted parameters
+    if (newLayersMuted) {
+        *newLayersMuted = std::move(finalLayersToMute);
+    }
+    if (newLayersUnmuted) {
+        *newLayersUnmuted = std::move(finalLayersToUnmute);
+    }
 }
 
 const std::vector<std::string>&
@@ -405,6 +415,7 @@ PcpCache::ComputeRelationshipTargetPaths(const SdfPath & relPath,
                                          bool localOnly,
                                          const SdfSpecHandle &stopProperty,
                                          bool includeStopProperty,
+                                         SdfPathVector *deletedPaths,
                                          PcpErrorVector *allErrors)
 {
     TRACE_FUNCTION();
@@ -420,7 +431,8 @@ PcpCache::ComputeRelationshipTargetPaths(const SdfPath & relPath,
                                  ComputePropertyIndex(relPath, allErrors),
                                  SdfSpecTypeRelationship,
                                  localOnly, stopProperty, includeStopProperty,
-                                 this, &targetIndex, allErrors );
+                                 this, &targetIndex, deletedPaths,
+                                 allErrors );
     paths->swap(targetIndex.paths);
 }
 
@@ -430,6 +442,7 @@ PcpCache::ComputeAttributeConnectionPaths(const SdfPath & attrPath,
                                           bool localOnly,
                                           const SdfSpecHandle &stopProperty,
                                           bool includeStopProperty,
+                                          SdfPathVector *deletedPaths,
                                           PcpErrorVector *allErrors)
 {
     TRACE_FUNCTION();
@@ -445,7 +458,8 @@ PcpCache::ComputeAttributeConnectionPaths(const SdfPath & attrPath,
                                  ComputePropertyIndex(attrPath, allErrors),
                                  SdfSpecTypeAttribute,
                                  localOnly, stopProperty, includeStopProperty,
-                                 this, &targetIndex, allErrors );
+                                 this, &targetIndex,  deletedPaths,
+                                 allErrors );
     paths->swap(targetIndex.paths);
 }
 
@@ -964,6 +978,9 @@ PcpCache::Apply(const PcpCacheChanges& changes, PcpLifeboat* lifeboat)
     //      this is more costly or that would be.
     static const bool fixTargetPaths = true;
     std::vector<SdfPath> newIncludes;
+    // Path changes are in the order in which they were processed so we know
+    // the difference between a rename from B -> C followed by A -> B as opposed
+    // to from A -> B, B -> C.
     TF_FOR_ALL(i, changes.didChangePath) {
         for (PayloadSet::iterator j = _includedPayloads.begin();
                 j != _includedPayloads.end(); ) {
@@ -978,6 +995,18 @@ PcpCache::Apply(const PcpCacheChanges& changes, PcpLifeboat* lifeboat)
             }
             else {
                 ++j;
+            }
+        }
+        // Because we could have a chain of renames like A -> B, B -> C, we also
+        // need to check the newIncludes. Any payloads prefixed by A will have
+        // been removed from _includedPayloads and renamed B in newIncludes 
+        // during the A -> B pass, so the B -> C pass needs to rename all the
+        // B prefixed paths in newIncludes to complete the full rename.
+        for (SdfPath &newInclude : newIncludes) {
+            if (newInclude.HasPrefix(i->first)) {
+                // The rename can happen in place.
+                newInclude = newInclude.ReplacePrefix(i->first, i->second,
+                                                       !fixTargetPaths);
             }
         }
     }

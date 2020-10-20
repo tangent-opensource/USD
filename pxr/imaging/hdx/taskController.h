@@ -212,20 +212,13 @@ public:
     void SetColorCorrectionParams(HdxColorCorrectionTaskParams const& params);
 
     /// -------------------------------------------------------
-    /// Color Channel API
+    /// Present API
 
-    /// Configure color channel by settings params.
+    /// Enable / disable presenting the render to bound framebuffer.
+    /// An application may choose to manage the AOVs that are rendered into
+    /// itself and skip the task controller's presentation.
     HDX_API
-    void SetColorChannelParams(HdxColorChannelTaskParams const& params);
-
-    /// -------------------------------------------------------
-    /// Colorize API
-
-    /// Turns the colorize task color quantization on or off.
-    /// XXX: This is a temporary function that will be soon deprecated. Please
-    //       avoid calling it.
-    HDX_API
-    void SetColorizeQuantizationEnabled(bool enabled);
+    void SetEnablePresentation(bool enabled);
 
 private:
     ///
@@ -247,16 +240,16 @@ private:
     SdfPath _CreateRenderTask(TfToken const& materialTag);
     void _CreateOitResolveTask();
     void _CreateSelectionTask();
-    void _CreateColorizeTask();
     void _CreateColorizeSelectionTask();
     void _CreateColorCorrectionTask();
-    void _CreateColorChannelTask();
     void _CreatePickTask();
     void _CreatePickFromRenderBufferTask();
-    SdfPath _CreateAovResolveTask(TfToken const& aovName);
+    void _CreateAovInputTask();
     void _CreatePresentTask();
 
     void _SetCameraParamForTasks(SdfPath const& id);
+    void _SetViewportForTasks();
+    void _UpdateAovDimensions(GfVec3i const& dimensions);
 
     void _SetBlendStateForMaterialTag(TfToken const& materialTag,
                                       HdxRenderTaskParams *renderParams) const;
@@ -266,18 +259,15 @@ private:
     bool _SelectionEnabled() const;
     bool _ColorizeSelectionEnabled() const;
     bool _ColorCorrectionEnabled() const;
-    bool _ColorChannelEnabled() const;
     bool _ColorizeQuantizationEnabled() const;
     bool _AovsSupported() const;
     bool _CamerasSupported() const;
+    bool _UsingAovs() const;
 
     // Helper function for renderbuffer management.
     SdfPath _GetRenderTaskPath(TfToken const& materialTag) const;
     SdfPath _GetAovPath(TfToken const& aov) const;
     SdfPathVector _GetAovEnabledTasks() const;
-
-    // Helper function to load the default domeLight texture
-    void _LoadDefaultDomeLightTexture();
 
     // Helper function to set the parameters of a light, get a particular light 
     // in the scene, replace and remove Sprims from the scene 
@@ -348,16 +338,13 @@ private:
     SdfPath _simpleLightTaskId;
     SdfPath _shadowTaskId;
     SdfPathVector _renderTaskIds;
+    SdfPath _aovInputTaskId;
     SdfPath _oitResolveTaskId;
     SdfPath _selectionTaskId;
     SdfPath _colorizeSelectionTaskId;
-    SdfPath _colorizeTaskId;
     SdfPath _colorCorrectionTaskId;
-    SdfPath _colorChannelTaskId;
     SdfPath _pickTaskId;
     SdfPath _pickFromRenderBufferTaskId;
-    SdfPath _aovColorResolveTaskId;
-    SdfPath _aovDepthResolveTaskId;
     SdfPath _presentTaskId;
 
     // Generated camera (for the default/free cam)
@@ -367,12 +354,13 @@ private:
     
     // Built-in lights
     SdfPathVector _lightIds;
-    HdTextureResourceSharedPtr _defaultDomeLightTextureResource;
 
     // Generated renderbuffers
     SdfPathVector _aovBufferIds;
     TfTokenVector _aovOutputs;
     TfToken _viewportAov;
+
+    GfVec4d _viewport;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE
