@@ -25,8 +25,8 @@ requires = [
     'tbb-2019.U9',
     'boost-1.61.0-houdini',
     'oiio-2.0.10-houdini',
-    'PyOpenGL-3.1.0'
-    #'~python-2'
+    'PyOpenGL-3',
+    'python-2',
 ]
 
 # This package requires no building, only env setup
