@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '19.11-houdini-ta.1.0.0'
+version = '19.11-houdini-18.0.532-ta.1.0.0'
 
 authors = [
     'benjamin.skinner',
@@ -11,11 +11,12 @@ authors = [
 ]
 
 variants = [
-    ['platform-windows', 'arch-x64', 'os-windows-10', 'houdini-18.0.532'],
+    ['platform-windows', 'arch-x64', 'os-windows-10'],
 ]
 
 private_build_requires = [
     'python-2',
+    'houdini-18.0.532',
 ]
 
 # These could probably be broken down into more specific houdini versions
@@ -26,7 +27,7 @@ requires = [
     'boost-1.61.0-houdini',
     'oiio-2.0.10-houdini',
     'PyOpenGL-3',
-    'python-2',
+    'python-2.7',
 ]
 
 # This package requires no building, only env setup
