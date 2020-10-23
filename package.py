@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '20.05-ta.1.2.0'
+version = '20.05-ta.1.2.1'
 
 authors = [
     'benjamin.skinner',
@@ -54,3 +54,5 @@ def commands():
     env.PATH.append( '{root}/lib' )
 
     env.PYTHONPATH.append( '{0}'.format( env.USD_PYTHON_DIR ) )
+
+    env.USD_BUILD_VARIANT.set("USD_PIXAR")
