@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '19.11-houdini-18.0.532-ta.1.1.0'
+version = '19.11-houdini-18.0.532-ta.1.2.0'
 
 authors = [
     'benjamin.skinner',
@@ -24,7 +24,7 @@ private_build_requires = [
 requires = [
     'zlib-1.2.11',
     'tbb-2019.U9',
-    'boost-1.61.0-houdini',
+    'hboost-1.61.0-houdini',
     'oiio-2.0.10-houdini',
     'PyOpenGL-3',
     'python-2.7',
