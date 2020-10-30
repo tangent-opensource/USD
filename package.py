@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '19.11-houdini-18.0.532-ta.1.3.0'
+version = '19.11-houdini-18.0.532-ta.1.4.0'
 
 authors = [
     'benjamin.skinner',
@@ -46,3 +46,5 @@ def commands():
     env.USD_PYTHON_DIR.set( '{root}/lib/python' )
 
     env.USD_BUILD_VARIANT.set("USD_HOUDINI")
+    
+    env.PATH.append( str(env.USD_LIBRARY_DIR) )
