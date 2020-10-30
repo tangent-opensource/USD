@@ -25,9 +25,15 @@ if __name__ == "__main__":
         
         os.mkdir(lib_dst)
 
-        files = glob.glob(src + '/custom/houdini/dsolib/libpxr_*.lib')
+        lib_files = glob.glob(src + '/custom/houdini/dsolib/libpxr_*.lib')
 
-        for f in files:
+        for f in lib_files:
+            #print(f)
+            shutil.copy(f, lib_dst + "/" + os.path.basename(f))
+
+        dll_files = glob.glob(src + '/bin/libpxr_*.dll')
+
+        for f in dll_files:
             #print(f)
             shutil.copy(f, lib_dst + "/" + os.path.basename(f))
 

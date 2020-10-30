@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '19.11-houdini-18.0.532-ta.1.2.0'
+version = '19.11-houdini-18.0.532-ta.1.3.0'
 
 authors = [
     'benjamin.skinner',
