@@ -25,7 +25,7 @@ requires = [
     'zlib-1.2.11',
     'tbb-2019.U9',
     'glew-1.1.0-houdini',
-    'opensubdiv-3.3.0-houdini',
+    'opensubdiv-3.3.3-houdini',
     'hboost-1.61.0-houdini',
     'oiio-2.0.10-houdini',
     'PyOpenGL-3',
