@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '19.11-houdini-18.0.532-ta.1.5.0'
+version = '20.08-houdini-18.5.351-ta.1.0.0'
 
 authors = [
     'benjamin.skinner',
@@ -16,7 +16,7 @@ variants = [
 
 private_build_requires = [
     'python-2',
-    'houdini-18.0.532',
+    'houdini-18.5.351',
 ]
 
 # These could probably be broken down into more specific houdini versions
@@ -25,8 +25,8 @@ requires = [
     'zlib-1.2.11',
     'tbb-2019.U9',
     'glew-1.1.0-houdini',
-    'opensubdiv-3.3.3-houdini',
-    'hboost-1.61.0-houdini',
+    'opensubdiv-3.4.3-houdini',
+    'hboost-1.72.0-houdini',
     'oiio-2.0.10-houdini',
     'PyOpenGL-3',
     'python-2.7',
