@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '20.08-houdini-18.5.351-ta.1.0.0'
+version = '20.08-houdini-18.5.351-ta.1.1.0'
 
 authors = [
     'benjamin.skinner',
@@ -26,6 +26,7 @@ requires = [
     'tbb-2019.U9',
     'glew-1.1.0-houdini',
     'opensubdiv-3.4.3-houdini',
+    'openvdb-7.1.0-houdini',
     'hboost-1.72.0-houdini',
     'oiio-2.0.10-houdini',
     'PyOpenGL-3',

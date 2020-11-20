@@ -22,7 +22,7 @@ if __name__ == "__main__":
         print("Starting install")
 
         shutil.copytree(src + "/toolkit/include/pxr", inc_dst + "/pxr")
-        
+
         os.mkdir(lib_dst)
 
         lib_files = glob.glob(src + '/custom/houdini/dsolib/libpxr_*.lib')
@@ -38,5 +38,3 @@ if __name__ == "__main__":
             shutil.copy(f, lib_dst + "/" + os.path.basename(f))
 
         print("Install complete")
-
-        
