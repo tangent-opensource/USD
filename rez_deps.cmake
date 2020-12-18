@@ -51,4 +51,10 @@ file(TO_CMAKE_PATH $ENV{BOOST_LIBRARY_DIR} BOOST_LIBRARYDIR)
 
 file(TO_CMAKE_PATH $ENV{TBB_ROOT} TBB_ROOT_DIR)
 
-file(TO_CMAKE_PATH $ENV{OPENEXR_INCLUDE_DIR} OPENEXR_INCLUDE_DIRS)
+file(TO_CMAKE_PATH $ENV{OPENEXR_INCLUDE_DIR} OPENEXR_INCLUDE_DIR)
+file(TO_CMAKE_PATH $ENV{OPENEXR_ROOT} OPENEXR_LOCATION)
+
+# These are both needed because \USD\pxr\imaging\glf\CMakeLists.txt doesnt include openexr headers when building with openvdb...
+# Noone else has Issued this on GH, so maybe our OpenVDB build shouldnt have exr? 
+set(OPENVDB_INCLUDE_DIR "${OPENVDB_INCLUDE_DIR};${OPENEXR_INCLUDE_DIR}")
+add_definitions(-D_USE_MATH_DEFINES)

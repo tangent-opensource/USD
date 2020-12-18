@@ -15,7 +15,7 @@ variants = [
 
 requires = [
     'python-3.7',
-    'PySide2-5.12.2',
+    'PySide2-5.14.1',
     'PyOpenGL-3.1.5',
     'oiio-1.8.9',
     'ocio-1.1.1',
