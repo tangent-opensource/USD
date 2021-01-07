@@ -36,5 +36,31 @@ if __name__ == "__main__":
         for f in dll_files:
             #print(f)
             shutil.copy(f, lib_dst + "/" + os.path.basename(f))
+ 
+    else:
 
-        print("Install complete")
+        # Remove existing build
+        if os.path.exists(dst):
+            print(" - Removing existing build")
+            shutil.rmtree(dst, ignore_errors=True)
+
+        print("Starting install")
+
+        shutil.copytree(src + "/toolkit/include/pxr", inc_dst + "/pxr")
+
+        os.mkdir(lib_dst)
+
+        lib_files = glob.glob(src + '/dsolib/libpxr_*.so')
+
+        for f in lib_files:
+            #print(f)
+            shutil.copy(f, lib_dst + "/" + os.path.basename(f))
+
+        #dll_files = glob.glob(src + '/bin/libpxr_*.dll')
+
+        #for f in dll_files:
+            #print(f)
+            #shutil.copy(f, lib_dst + "/" + os.path.basename(f))
+
+
+    print("Install complete")

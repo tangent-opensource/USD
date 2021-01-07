@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '20.08-houdini-18.5.351-ta.1.1.0'
+version = '20.08-houdini-18.5.351-ta.1.2.0'
 
 authors = [
     'benjamin.skinner',
@@ -12,6 +12,7 @@ authors = [
 
 variants = [
     ['platform-windows', 'arch-x64', 'os-windows-10'],
+    ['platform-linux', 'arch-x86_64', 'os-centos-7'],
 ]
 
 private_build_requires = [
@@ -24,12 +25,12 @@ private_build_requires = [
 requires = [
     'zlib-1.2.11',
     'tbb-2019.U9',
-    'glew-1.1.0-houdini',
+    'glew-1.13.0-houdini',
     'opensubdiv-3.4.3-houdini',
     'openvdb-7.1.0-houdini',
     'hboost-1.72.0-houdini',
     'oiio-2.0.10-houdini',
-    'PyOpenGL-3',
+#    'PyOpenGL-3', # Removed for linux build
     'python-2.7',
 ]
 
