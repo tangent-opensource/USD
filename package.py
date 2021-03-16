@@ -10,10 +10,21 @@ authors = [
     'sidefx',
 ]
 
-variants = [
-    ['platform-windows', 'arch-x64', 'os-windows-10'],
+linux_variants = [
     ['platform-linux', 'arch-x86_64', 'os-centos-7'],
 ]
+
+windows_variants = [ 
+    ['platform-windows', 'arch-x64', 'os-windows-10'],
+]
+
+@early()
+def variants():
+    import sys
+    if 'win' in str(sys.platform):
+        return windows_variants
+    else:
+        return linux_variants
 
 private_build_requires = [
     'python-2',
@@ -26,6 +37,7 @@ requires = [
     'zlib-1.2.11',
     'tbb-2019.U9',
     'glew-1.13.0-houdini',
+    'openvdb-7.2.2-houdini',
     'opensubdiv-3.4.3-houdini',
     'hboost-1.72.0-houdini',
     'oiio-2.0.10-houdini',
