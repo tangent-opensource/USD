@@ -2,7 +2,7 @@
 
 name = 'usd'
 
-version = '20.11-ta.1.0.0'
+version = '20.11-ta.1.0.1'
 
 authors = [
     'benjamin.skinner',
@@ -17,6 +17,7 @@ requires = [
     'python-3.7',
     'PySide2-5.14.1',
     'PyOpenGL-3.1.5',
+    'Jinja2',
     'oiio-1.8.9',
     'ocio-1.1.1',
     'openvdb-7.0.0',
