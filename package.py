@@ -2,7 +2,7 @@
 
 name = "usd"
 
-version = "21.02-maya.2020.4-ta.1.2.0"
+version = "21.02-maya.2020.4-ta.1.2.1"
 
 authors = [
     "benjamin.skinner",
